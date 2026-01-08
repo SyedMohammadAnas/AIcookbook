@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # API Service - Instagram downloader and orchestration
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: recipe-extractor-api
+    ports:
+      - "3000:3000"
+    volumes:
+      - E:\media-store:/data
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - recipe-network
+
+  # Transcription Service - Whisper audio transcription
+  transcription:
+    build:
+      context: ./services/transcription
+      dockerfile: Dockerfile
+    container_name: recipe-extractor-transcription
+    ports:
+      - "5000:5000"
+    volumes:
+      - E:\media-store:/data
+    environment:
+      - WHISPER_MODEL=small
+      - DEVICE=cpu
+    restart: unless-stopped
+    networks:
+      - recipe-network
+    depends_on:
+      - api
+
+  # LLM Processor Service - Recipe generation (planned)
+  # llm-processor:
+  #   build:
+  #     context: ./services/llm-processor
+  #     dockerfile: Dockerfile
+  #   container_name: recipe-extractor-llm
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - E:\media-store:/data
+  #   environment:
+  #     - MODEL_PATH=/models
+  #   restart: unless-stopped
+  #   networks:
+  #     - recipe-network
+
+networks:
+  recipe-network:
+    driver: bridge
