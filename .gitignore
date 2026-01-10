@@ -485,3 +485,7 @@ firestore-debug.log
 
 # Fly.io
 fly.toml
+
+# Markdown files (ignore all except README.md)
+*.md
+!README.md
