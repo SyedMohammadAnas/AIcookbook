@@ -490,3 +490,4 @@ fly.toml
 *.md
 !README.md
 !natural-transcribing-done.md
+!/docs/
