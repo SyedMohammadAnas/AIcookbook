@@ -349,6 +349,7 @@ fly.toml
 # Markdown files (ignore all except README.md)
 *.md
 !README.md
+!gpu-implementation-done.md
 
 # Build artifacts
 build/
