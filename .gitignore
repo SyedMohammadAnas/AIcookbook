@@ -490,4 +490,10 @@ fly.toml
 *.md
 !README.md
 !natural-transcribing-done.md
-!/docs/
+!api-endpoints.md
+!transcription-setup.md
+!master-plan.md
+!testing-guide.md
+
+# Docker files
+!docker-compose.yml
