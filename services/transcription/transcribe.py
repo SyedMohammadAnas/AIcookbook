@@ -72,18 +72,18 @@ def get_tiny_model():
     """Get or load tiny model"""
     global _model_tiny
     if _model_tiny is None:
-        logger.info("Loading tiny model...")
-        _model_tiny = WhisperModel("tiny", device="cpu", compute_type="int8")
-        logger.info("Tiny model loaded")
+        logger.info("Loading tiny model on GPU...")
+        _model_tiny = WhisperModel("tiny", device="cuda", compute_type="int8_float16")
+        logger.info("Tiny model loaded on GPU")
     return _model_tiny
 
 def get_medium_model():
     """Get or load medium model for Indian languages"""
     global _model_medium
     if _model_medium is None:
-        logger.info("Loading medium model for Hindi/Telugu/Tamil...")
-        _model_medium = WhisperModel("medium", device="cpu", compute_type="int8")
-        logger.info("Medium model loaded")
+        logger.info("Loading medium model for Hindi/Telugu/Tamil on GPU...")
+        _model_medium = WhisperModel("medium", device="cuda", compute_type="int8")
+        logger.info("Medium model loaded on GPU")
     return _model_medium
 
 def extract_audio(video_path, audio_path):
