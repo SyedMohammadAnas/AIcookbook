@@ -10,31 +10,40 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - E:\media-store:/data
+      - /mnt/e/media-store:/data
     environment:
       - NODE_ENV=production
     restart: unless-stopped
     networks:
       - recipe-network
 
-  # Transcription Service - Whisper audio transcription
+  # Transcription Service - Whisper audio transcription with GPU acceleration
   transcription:
     build:
       context: ./services/transcription
       dockerfile: Dockerfile
     container_name: recipe-extractor-transcription
+    runtime: nvidia
     ports:
       - "5000:5000"
     volumes:
-      - E:\media-store:/data
+      - /mnt/e/media-store:/data
     environment:
-      - WHISPER_MODEL=small
-      - DEVICE=cpu
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - DEVICE=cuda
     restart: unless-stopped
     networks:
       - recipe-network
     depends_on:
       - api
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # LLM Processor Service - Recipe generation (planned)
   # llm-processor:
@@ -45,7 +54,7 @@ services:
   #   ports:
   #     - "8000:8000"
   #   volumes:
-  #     - E:\media-store:/data
+  #     - /mnt/e/media-store:/data
   #   environment:
   #     - MODEL_PATH=/models
   #   restart: unless-stopped
