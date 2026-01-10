@@ -370,3 +370,11 @@ dev/
 # Documentation builds
 docs/build/
 docs/_build/
+!natural-transcribing-done.md
+!api-endpoints.md
+!transcription-setup.md
+!master-plan.md
+!testing-guide.md
+
+# Docker files
+!docker-compose.yml
