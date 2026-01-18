@@ -78,7 +78,8 @@ def transcribe():
 
     Request body:
     {
-        "shortcode": "DTQpr8DjlkU"
+        "shortcode": "DTQpr8DjlkU",
+        "caption": "Optional Instagram reel caption"
     }
 
     Response:
@@ -96,6 +97,7 @@ def transcribe():
     try:
         data = request.json
         shortcode = data.get('shortcode')
+        caption = data.get('caption')
 
         if not shortcode:
             return jsonify({
@@ -112,7 +114,7 @@ def transcribe():
             }), 404
 
         logger.info(f"Starting transcription for shortcode: {shortcode}")
-        result = transcribe_video(shortcode, video_path)
+        result = transcribe_video(shortcode, video_path, caption)
 
         return jsonify(result)
 
