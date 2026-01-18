@@ -65,12 +65,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
 
     // Step 2: Transcribe
     console.log('Step 2/2: Transcribing...');
-    const transcribeResponse = await fetch('http://localhost:5000/transcribe', {
+
+    // Extract caption from metadata (title field in enhanced video info)
+    const caption = downloadResult.metadata?.title || '';
+
+    const transcribeResponse = await fetch('http://recipe-extractor-transcription:5000/transcribe', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ shortcode }),
+      body: JSON.stringify({ shortcode, caption }),
     });
 
     if (!transcribeResponse.ok) {

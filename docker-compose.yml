@@ -10,9 +10,10 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - /mnt/e/media-store:/data
+      - //e/media-store:/data
     environment:
       - NODE_ENV=production
+    user: root  # Run as root for volume access (temporary fix)
     restart: unless-stopped
     networks:
       - recipe-network
@@ -27,7 +28,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - /mnt/e/media-store:/data
+      - //e/media-store:/data
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

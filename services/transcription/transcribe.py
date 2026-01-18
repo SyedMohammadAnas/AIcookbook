@@ -172,7 +172,7 @@ def extract_audio_only(shortcode, video_path):
         "processingTime": round(processing_time, 2)
     }
 
-def transcribe_video(shortcode, video_path):
+def transcribe_video(shortcode, video_path, caption=None):
     """
     Two-stage transcription pipeline for optimal quality and performance:
 
@@ -206,6 +206,7 @@ def transcribe_video(shortcode, video_path):
     Args:
         shortcode: Instagram reel shortcode
         video_path: Path to video file
+        caption: Instagram reel caption (optional)
 
     Returns:
         Result dictionary with all paths, transcript, metadata, and timing info
@@ -394,6 +395,7 @@ def transcribe_video(shortcode, video_path):
         "modelUsed": model_used,
         "task": task,
         "duration": final_info.duration,
+        "caption": caption or "",
         "transcribedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "detectionTime": round(detection_time, 2),
         "transcriptionTime": round(transcription_time, 2),
@@ -421,6 +423,13 @@ def transcribe_video(shortcode, video_path):
         f.write("=" * 60 + "\n\n")
         f.write(f"Shortcode: {shortcode}\n")
         f.write(f"Transcribed At: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
+        f.write("-" * 60 + "\n")
+        f.write("REEL CAPTION\n")
+        f.write("-" * 60 + "\n")
+        if caption:
+            f.write(f"{caption}\n\n")
+        else:
+            f.write("No caption available\n\n")
         f.write("-" * 60 + "\n")
         f.write("LANGUAGE DETECTION\n")
         f.write("-" * 60 + "\n")
