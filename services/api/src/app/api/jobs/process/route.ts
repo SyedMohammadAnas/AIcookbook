@@ -20,7 +20,21 @@ interface ProcessResponse {
  */
 export async function POST(request: NextRequest): Promise<NextResponse<ProcessResponse>> {
   try {
-    const body: ProcessRequest = await request.json();
+    // Manually parse JSON to catch parsing errors
+    let body: ProcessRequest;
+    try {
+      const rawBody = await request.text();
+      body = JSON.parse(rawBody);
+    } catch (jsonError) {
+      console.error('JSON parsing error:', jsonError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid JSON in request body',
+        },
+        { status: 400 }
+      );
+    }
     const { url } = body;
 
     if (!url) {

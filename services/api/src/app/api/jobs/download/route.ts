@@ -40,7 +40,20 @@ export async function POST(request: NextRequest): Promise<NextResponse<DownloadR
     const reelDir = join(DATA_DIR, shortcode);
 
     if (!existsSync(reelDir)) {
-      await mkdir(reelDir, { recursive: true });
+      try {
+        await mkdir(reelDir, { recursive: true });
+      } catch (mkdirError) {
+        console.error('Failed to create directory:', mkdirError);
+        return NextResponse.json(
+          {
+            success: false,
+            shortcode,
+            videoPath: '',
+            error: `Permission denied: Cannot create directory ${reelDir}. Please check Docker volume permissions.`,
+          },
+          { status: 500 }
+        );
+      }
     }
 
     // Download video
