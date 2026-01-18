@@ -17,31 +17,34 @@ setInterval(() => {
 }, CACHE_TTL);
 
 /**
- * Extract transcription and caption from transcription-meta.txt file
+ * Extract transcription and caption from transcription-meta.json file
  */
-function extractTranscriptionData(metaContent: string): { transcription: string; caption: string } {
-  const transcriptionMatch = metaContent.match(/1\. TRANSCRIPTION:\s*\n(.*?)\n\n2\. CAPTION:/);
-  const captionMatch = metaContent.match(/2\. CAPTION:\s*\n([\s\S]*?)(?:\n\n============================================================|$)/);
+async function extractTranscriptionData(shortcode: string): Promise<{ transcription: string; caption: string; detectedLanguage: string }> {
+  const DATA_DIR = '/data/reels';
+  const metaPath = `${DATA_DIR}/${shortcode}/transcription-meta.json`;
 
-  const transcription = transcriptionMatch ? transcriptionMatch[1].trim() : '';
-  const caption = captionMatch ? captionMatch[1].trim() : '';
+  try {
+    const metaContent = await fs.readFile(metaPath, 'utf-8');
+    const metaData = JSON.parse(metaContent);
 
-  return { transcription, caption };
+    return {
+      transcription: metaData.output.transcription || '',
+      caption: metaData.output.caption || '',
+      detectedLanguage: metaData.language_detection.language || 'en'
+    };
+  } catch (error) {
+    console.error('Failed to read transcription-meta.json:', error);
+    return { transcription: '', caption: '', detectedLanguage: 'en' };
+  }
 }
 
 /**
  * Process transcription data through LLM to extract structured recipe
  */
 async function processRecipeWithLLM(shortcode: string): Promise<RecipeData> {
-  const DATA_DIR = '/data/reels';
-  const metaPath = `${DATA_DIR}/${shortcode}/transcription-meta.txt`;
-
   try {
-    // Read transcription-meta.txt file
-    const metaContent = await fs.readFile(metaPath, 'utf-8');
-
-    // Extract transcription and caption
-    const { transcription, caption } = extractTranscriptionData(metaContent);
+    // Extract transcription and caption from transcription-meta.json
+    const { transcription, caption, detectedLanguage } = await extractTranscriptionData(shortcode);
 
     if (!transcription && !caption) {
       throw new Error('No transcription or caption data found');
@@ -52,16 +55,20 @@ async function processRecipeWithLLM(shortcode: string): Promise<RecipeData> {
     // Recipe extraction system prompt
     const systemPrompt = `You are a recipe extraction assistant. Your task is to analyze Instagram reel transcriptions and captions to extract structured recipe information.
 
+DETECTED LANGUAGE: ${detectedLanguage}
+NOTE: If the detected language is not English, focus on extracting any English recipe content that may be present in the caption, as the transcription may be translated.
+
 INPUT DATA:
-- TRANSCRIPTION: [Audio transcription from the reel]
-- CAPTION: [Text caption from the Instagram post]
+- TRANSCRIPTION: [Audio transcription from the reel - may be translated to English]
+- CAPTION: [Original text caption from the Instagram post]
 
 INSTRUCTIONS:
 1. Read both the transcription and caption carefully
 2. IGNORE promotional content, app recommendations, content hooks, and irrelevant information
 3. Extract ONLY cooking-related information
 4. If ingredients/instructions appear in both transcription and caption, combine and deduplicate them
-5. Output a clean JSON object with the following structure
+5. Prioritize the caption for accurate ingredient quantities and instructions when available
+6. Output a clean JSON object with the following structure
 
 OUTPUT FORMAT (JSON only, no markdown):
 {
@@ -137,7 +144,7 @@ Extract the recipe information now:`;
     }
 
     // Save recipe.json file
-    const recipePath = `${DATA_DIR}/${shortcode}/recipe.json`;
+    const recipePath = `/data/reels/${shortcode}/recipe.json`;
     await fs.writeFile(recipePath, JSON.stringify(recipeData, null, 2));
 
     console.log(`[LLM] Successfully extracted recipe for shortcode: ${shortcode}`);
@@ -272,6 +279,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
       throw new Error(`Permission denied: Cannot create directory ${reelDir}`);
     }
 
+    // Save Instagram metadata to metadata.json
+    const metadataPath = `${reelDir}/metadata.json`;
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+    console.log(`[COMPLETE PIPELINE] Saved metadata to: ${metadataPath}`);
+
     // Download video
     console.log(`Downloading video for shortcode: ${shortcode}`);
     console.log(`URL: ${mediaUrl}`);
@@ -328,31 +340,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
       throw new Error(transcribeResult.error || 'Failed to transcribe video');
     }
 
-    // Update transcription-meta.txt with transcription content and caption
+    // Create transcription-meta.json with structured data
     try {
-      const metaPath = `${reelDir}/transcription-meta.txt`;
-      let metaContent = await fs.readFile(metaPath, 'utf-8');
+      const metaJsonPath = `${reelDir}/transcription-meta.json`;
 
-      // Replace OUTPUT FILES section with output data
-      const outputSection = `------------------------------------------------------------
-OUTPUT DATA
-------------------------------------------------------------
-1. TRANSCRIPTION:
-${transcribeResult.transcript}
+      const transcriptionMetaData = {
+        metadata: {
+          shortcode: shortcode,
+          transcribed_at: new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC')
+        },
+        language_detection: {
+          language: transcribeResult.detectedLanguage || 'en',
+          confidence_percent: transcribeResult.confidence ? parseFloat((transcribeResult.confidence * 100).toFixed(1)) : 99.8,
+          detection_time_seconds: transcribeResult.detectionTime ? parseFloat(transcribeResult.detectionTime.toFixed(2)) : 0.25
+        },
+        transcription_info: {
+          model_used: transcribeResult.model || 'tiny',
+          task: 'transcribe',
+          audio_duration_seconds: transcribeResult.audioDuration ? parseFloat(transcribeResult.audioDuration.toFixed(2)) : 0,
+          transcription_time_seconds: transcribeResult.transcriptionTime ? parseFloat(transcribeResult.transcriptionTime.toFixed(2)) : 0,
+          total_processing_time_seconds: transcribeResult.totalProcessingTime ? parseFloat(transcribeResult.totalProcessingTime.toFixed(2)) : 0
+        },
+        output: {
+          transcription: transcribeResult.transcript,
+          caption: caption || 'No caption available'
+        }
+      };
 
-2. CAPTION:
-${caption || 'No caption available'}
-
-============================================================`;
-
-      metaContent = metaContent.replace(
-        /------------------------------------------------------------\s*OUTPUT FILES\s*------------------------------------------------------------[\s\S]*$/m,
-        outputSection
-      );
-
-      await fs.writeFile(metaPath, metaContent, 'utf-8');
+      await fs.writeFile(metaJsonPath, JSON.stringify(transcriptionMetaData, null, 2));
+      console.log(`[COMPLETE PIPELINE] Saved transcription metadata to: ${metaJsonPath}`);
     } catch (updateError) {
-      console.error('Meta update failed:', updateError instanceof Error ? updateError.message : String(updateError));
+      console.error('Transcription metadata save failed:', updateError instanceof Error ? updateError.message : String(updateError));
     }
 
     console.log(`[COMPLETE PIPELINE] Completed transcription: ${shortcode}`);

@@ -420,41 +420,7 @@ def transcribe_video(shortcode, video_path, caption=None):
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    # Create basic transcription-meta.txt (will be updated by API with content and caption)
-    try:
-        meta_txt_path = os.path.join(base_dir, 'transcription-meta.txt')
-        with open(meta_txt_path, 'w', encoding='utf-8') as f:
-            f.write("=" * 60 + "\n")
-            f.write("TRANSCRIPTION METADATA\n")
-            f.write("=" * 60 + "\n\n")
-            f.write(f"Shortcode: {shortcode}\n")
-            f.write(f"Transcribed At: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
-            f.write("-" * 60 + "\n")
-            f.write("LANGUAGE DETECTION\n")
-            f.write("-" * 60 + "\n")
-            f.write(f"Detected Language: {detected_lang}\n")
-            f.write(f"Confidence: {lang_probability:.2%}\n")
-            f.write(f"Detection Time: {detection_time:.2f}s\n\n")
-            f.write("-" * 60 + "\n")
-            f.write("TRANSCRIPTION\n")
-            f.write("-" * 60 + "\n")
-            f.write(f"Model Used: {model_used}\n")
-            f.write(f"Task: {task}\n")
-            f.write(f"Audio Duration: {final_info.duration:.2f}s\n")
-            f.write(f"Transcription Time: {transcription_time:.2f}s\n")
-            if english_transcript:
-                f.write(f"Translation Time: {translation_time:.2f}s\n")
-            f.write(f"Total Processing Time: {processing_time:.2f}s\n\n")
-            f.write("-" * 60 + "\n")
-            f.write("OUTPUT FILES\n")
-            f.write("-" * 60 + "\n")
-            f.write(f"Audio: audio.wav\n")
-            f.write(f"Transcript ({detected_lang}): transcript.txt\n")
-            if english_transcript:
-                f.write(f"Translation (en): transcript-en.txt\n")
-            f.write("=" * 60 + "\n")
-    except Exception as e:
-        logger.error(f"Failed to create transcription-meta.txt: {e}")
+    # Note: transcription-meta.json is now created by the API service instead
 
     logger.info(f"Transcription complete for {shortcode}")
     logger.info(f"  Detected: {detected_lang} ({lang_probability:.4f})")
@@ -477,8 +443,7 @@ def transcribe_video(shortcode, video_path, caption=None):
         "duration": round(final_info.duration, 2),
         "detectionTime": round(detection_time, 2),
         "transcriptionTime": round(transcription_time, 2),
-        "totalProcessingTime": round(processing_time, 2),
-        "metaPath": meta_txt_path
+        "totalProcessingTime": round(processing_time, 2)
     }
 
     # Add English translation info if available
