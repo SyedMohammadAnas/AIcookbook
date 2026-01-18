@@ -284,6 +284,44 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
     await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
     console.log(`[COMPLETE PIPELINE] Saved metadata to: ${metadataPath}`);
 
+    // Download thumbnail image
+    const thumbnailUrl = metadata.data.thumbnail;
+    if (thumbnailUrl) {
+      try {
+        console.log(`[COMPLETE PIPELINE] Downloading thumbnail...`);
+        const thumbnailResponse = await fetch(thumbnailUrl);
+        if (thumbnailResponse.ok) {
+          const thumbnailBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
+          const thumbnailPath = `${reelDir}/thumbnail.jpg`;
+          await fs.writeFile(thumbnailPath, thumbnailBuffer);
+          console.log(`[COMPLETE PIPELINE] Saved thumbnail to: ${thumbnailPath}`);
+        } else {
+          console.warn(`[COMPLETE PIPELINE] Failed to download thumbnail: ${thumbnailResponse.status}`);
+        }
+      } catch (thumbnailError) {
+        console.warn(`[COMPLETE PIPELINE] Thumbnail download failed:`, thumbnailError);
+      }
+    }
+
+    // Download profile picture
+    const profilePicUrl = metadata.data.owner?.profile_pic_url;
+    if (profilePicUrl) {
+      try {
+        console.log(`[COMPLETE PIPELINE] Downloading profile picture...`);
+        const profileResponse = await fetch(profilePicUrl);
+        if (profileResponse.ok) {
+          const profileBuffer = Buffer.from(await profileResponse.arrayBuffer());
+          const profilePath = `${reelDir}/profile.jpg`;
+          await fs.writeFile(profilePath, profileBuffer);
+          console.log(`[COMPLETE PIPELINE] Saved profile picture to: ${profilePath}`);
+        } else {
+          console.warn(`[COMPLETE PIPELINE] Failed to download profile picture: ${profileResponse.status}`);
+        }
+      } catch (profileError) {
+        console.warn(`[COMPLETE PIPELINE] Profile picture download failed:`, profileError);
+      }
+    }
+
     // Download video
     console.log(`Downloading video for shortcode: ${shortcode}`);
     console.log(`URL: ${mediaUrl}`);
