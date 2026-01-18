@@ -291,6 +291,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
         console.log(`[COMPLETE PIPELINE] Downloading thumbnail...`);
         const thumbnailResponse = await fetch(thumbnailUrl);
         if (thumbnailResponse.ok) {
+          // @ts-ignore: Buffer is available in Node.js runtime
           const thumbnailBuffer = Buffer.from(await thumbnailResponse.arrayBuffer());
           const thumbnailPath = `${reelDir}/thumbnail.jpg`;
           await fs.writeFile(thumbnailPath, thumbnailBuffer);
@@ -310,6 +311,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
         console.log(`[COMPLETE PIPELINE] Downloading profile picture...`);
         const profileResponse = await fetch(profilePicUrl);
         if (profileResponse.ok) {
+          // @ts-ignore: Buffer is available in Node.js runtime
           const profileBuffer = Buffer.from(await profileResponse.arrayBuffer());
           const profilePath = `${reelDir}/profile.jpg`;
           await fs.writeFile(profilePath, profileBuffer);
