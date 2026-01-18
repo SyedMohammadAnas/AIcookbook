@@ -16,8 +16,163 @@ setInterval(() => {
   processingCache.clear(); // Clean cache every 5 minutes
 }, CACHE_TTL);
 
+/**
+ * Extract transcription and caption from transcription-meta.txt file
+ */
+function extractTranscriptionData(metaContent: string): { transcription: string; caption: string } {
+  const transcriptionMatch = metaContent.match(/1\. TRANSCRIPTION:\s*\n(.*?)\n\n2\. CAPTION:/);
+  const captionMatch = metaContent.match(/2\. CAPTION:\s*\n([\s\S]*?)(?:\n\n============================================================|$)/);
+
+  const transcription = transcriptionMatch ? transcriptionMatch[1].trim() : '';
+  const caption = captionMatch ? captionMatch[1].trim() : '';
+
+  return { transcription, caption };
+}
+
+/**
+ * Process transcription data through LLM to extract structured recipe
+ */
+async function processRecipeWithLLM(shortcode: string): Promise<RecipeData> {
+  const DATA_DIR = '/data/reels';
+  const metaPath = `${DATA_DIR}/${shortcode}/transcription-meta.txt`;
+
+  try {
+    // Read transcription-meta.txt file
+    const metaContent = await fs.readFile(metaPath, 'utf-8');
+
+    // Extract transcription and caption
+    const { transcription, caption } = extractTranscriptionData(metaContent);
+
+    if (!transcription && !caption) {
+      throw new Error('No transcription or caption data found');
+    }
+
+    console.log(`[LLM] Processing recipe extraction for shortcode: ${shortcode}`);
+
+    // Recipe extraction system prompt
+    const systemPrompt = `You are a recipe extraction assistant. Your task is to analyze Instagram reel transcriptions and captions to extract structured recipe information.
+
+INPUT DATA:
+- TRANSCRIPTION: [Audio transcription from the reel]
+- CAPTION: [Text caption from the Instagram post]
+
+INSTRUCTIONS:
+1. Read both the transcription and caption carefully
+2. IGNORE promotional content, app recommendations, content hooks, and irrelevant information
+3. Extract ONLY cooking-related information
+4. If ingredients/instructions appear in both transcription and caption, combine and deduplicate them
+5. Output a clean JSON object with the following structure
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "recipe_name": "Name of the dish",
+  "servings": "Number of servings or portions",
+  "prep_time": "Preparation time (e.g., '15 minutes')",
+  "cook_time": "Cooking time (e.g., '30 minutes')",
+  "total_time": "Total time (e.g., '45 minutes')",
+  "ingredients": [
+    {
+      "item": "ingredient name",
+      "quantity": "amount",
+      "unit": "measurement unit",
+      "notes": "any preparation notes (optional)"
+    }
+  ],
+  "instructions": [
+    {
+      "step": 1,
+      "instruction": "Detailed step description"
+    }
+  ],
+  "tags": ["tag1", "tag2"],
+  "cuisine": "Type of cuisine",
+  "difficulty": "easy/medium/hard"
+}
+
+TRANSCRIPTION:
+${transcription}
+
+CAPTION:
+${caption}
+
+Extract the recipe information now:`;
+
+    // Call LLM API
+    const llmResponse = await fetch('http://llm-processor:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama3.2:3b',
+        prompt: systemPrompt,
+        stream: false,
+        format: 'json'
+      }),
+      signal: AbortSignal.timeout(240000), // 240 seconds timeout for first request
+    });
+
+    if (!llmResponse.ok) {
+      throw new Error(`LLM API request failed: ${llmResponse.status} ${llmResponse.statusText}`);
+    }
+
+    const llmResult = await llmResponse.json();
+
+    if (!llmResult.response) {
+      throw new Error('LLM returned empty response');
+    }
+
+    // Parse the JSON response
+    let recipeData: RecipeData;
+    try {
+      recipeData = JSON.parse(llmResult.response);
+    } catch (parseError) {
+      console.error('Failed to parse LLM response as JSON:', llmResult.response);
+      throw new Error('LLM returned invalid JSON response');
+    }
+
+    // Validate basic structure
+    if (!recipeData.ingredients || !Array.isArray(recipeData.ingredients)) {
+      throw new Error('LLM response missing required ingredients array');
+    }
+
+    // Save recipe.json file
+    const recipePath = `${DATA_DIR}/${shortcode}/recipe.json`;
+    await fs.writeFile(recipePath, JSON.stringify(recipeData, null, 2));
+
+    console.log(`[LLM] Successfully extracted recipe for shortcode: ${shortcode}`);
+
+    return recipeData;
+
+  } catch (error) {
+    console.error(`[LLM] Error processing recipe for ${shortcode}:`, error);
+    throw error;
+  }
+}
+
 interface CompletePipelineRequest {
   url: string;
+}
+
+interface RecipeData {
+  recipe_name: string;
+  servings: string;
+  prep_time: string;
+  cook_time: string;
+  total_time: string;
+  ingredients: Array<{
+    item: string;
+    quantity: string;
+    unit: string;
+    notes?: string;
+  }>;
+  instructions: Array<{
+    step: number;
+    instruction: string;
+  }>;
+  tags: string[];
+  cuisine: string;
+  difficulty: string;
 }
 
 interface CompletePipelineResponse {
@@ -30,6 +185,8 @@ interface CompletePipelineResponse {
     transcript: string;
     detectedLanguage: string;
   };
+  recipe?: RecipeData;
+  recipePath?: string;
   error?: string;
 }
 
@@ -198,7 +355,23 @@ ${caption || 'No caption available'}
       console.error('Meta update failed:', updateError instanceof Error ? updateError.message : String(updateError));
     }
 
-    console.log(`[COMPLETE PIPELINE] Completed: ${shortcode}`);
+    console.log(`[COMPLETE PIPELINE] Completed transcription: ${shortcode}`);
+
+    // Stage 2: Process transcription through LLM for recipe extraction
+    console.log(`[COMPLETE PIPELINE] Starting LLM recipe extraction...`);
+
+    let recipeData: RecipeData | undefined;
+    let recipePath: string | undefined;
+
+    try {
+      recipeData = await processRecipeWithLLM(shortcode);
+      recipePath = `/data/reels/${shortcode}/recipe.json`;
+      console.log(`[COMPLETE PIPELINE] Recipe extraction completed: ${shortcode}`);
+    } catch (llmError) {
+      console.error(`[COMPLETE PIPELINE] LLM processing failed for ${shortcode}:`, llmError);
+      // Continue with pipeline even if LLM fails - don't throw error
+      console.log(`[COMPLETE PIPELINE] Continuing without recipe extraction due to LLM error`);
+    }
 
     // Clean up cache
     processingCache.delete(url);
@@ -213,6 +386,8 @@ ${caption || 'No caption available'}
         transcript: transcribeResult.transcript,
         detectedLanguage: transcribeResult.detectedLanguage,
       },
+      recipe: recipeData,
+      recipePath,
     });
 
   } catch (error) {
