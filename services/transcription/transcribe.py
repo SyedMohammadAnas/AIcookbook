@@ -215,6 +215,11 @@ def transcribe_video(shortcode, video_path, caption=None):
     audio_path = os.path.join(base_dir, 'audio.wav')
     transcript_path = os.path.join(base_dir, 'transcript.txt')
 
+    logger.info(f"Transcription started for {shortcode} with caption present: {caption is not None and len(caption) > 0}")
+    if caption:
+        logger.info(f"Caption preview: {caption[:100]}...")
+    else:
+        logger.warning("No caption provided")
     start_time = time.time()
 
     # Step 1: Extract audio
@@ -416,44 +421,55 @@ def transcribe_video(shortcode, video_path, caption=None):
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     # Create transcription-meta.txt for quick reference
-    meta_txt_path = os.path.join(base_dir, 'transcription-meta.txt')
-    with open(meta_txt_path, 'w', encoding='utf-8') as f:
-        f.write("=" * 60 + "\n")
-        f.write("TRANSCRIPTION METADATA\n")
-        f.write("=" * 60 + "\n\n")
-        f.write(f"Shortcode: {shortcode}\n")
-        f.write(f"Transcribed At: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
-        f.write("-" * 60 + "\n")
-        f.write("REEL CAPTION\n")
-        f.write("-" * 60 + "\n")
-        if caption:
-            f.write(f"{caption}\n\n")
-        else:
-            f.write("No caption available\n\n")
-        f.write("-" * 60 + "\n")
-        f.write("LANGUAGE DETECTION\n")
-        f.write("-" * 60 + "\n")
-        f.write(f"Detected Language: {detected_lang}\n")
-        f.write(f"Confidence: {lang_probability:.2%}\n")
-        f.write(f"Detection Time: {detection_time:.2f}s\n\n")
-        f.write("-" * 60 + "\n")
-        f.write("TRANSCRIPTION\n")
-        f.write("-" * 60 + "\n")
-        f.write(f"Model Used: {model_used}\n")
-        f.write(f"Task: {task}\n")
-        f.write(f"Audio Duration: {final_info.duration:.2f}s\n")
-        f.write(f"Transcription Time: {transcription_time:.2f}s\n")
-        if english_transcript:
-            f.write(f"Translation Time: {translation_time:.2f}s\n")
-        f.write(f"Total Processing Time: {processing_time:.2f}s\n\n")
-        f.write("-" * 60 + "\n")
-        f.write("OUTPUT FILES\n")
-        f.write("-" * 60 + "\n")
-        f.write(f"Audio: audio.wav\n")
-        f.write(f"Transcript ({detected_lang}): transcript.txt\n")
-        if english_transcript:
-            f.write(f"Translation (en): transcript-en.txt\n")
-        f.write("=" * 60 + "\n")
+    try:
+        meta_txt_path = os.path.join(base_dir, 'transcription-meta.txt')
+        logger.info(f"Creating transcription-meta.txt at: {meta_txt_path}")
+        logger.info(f"Caption present: {caption is not None and len(str(caption or '')) > 0}")
+        with open(meta_txt_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 60 + "\n")
+            f.write("TRANSCRIPTION METADATA\n")
+            f.write("=" * 60 + "\n\n")
+            f.write(f"Shortcode: {shortcode}\n")
+            f.write(f"Transcribed At: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
+            f.write("-" * 60 + "\n")
+            f.write("REEL CAPTION\n")
+            f.write("-" * 60 + "\n")
+            logger.info("Writing REEL CAPTION section")
+            f.write(f"Caption value: '{caption}'\n")
+            f.write(f"Caption type: {type(caption)}\n")
+            f.write(f"Caption length: {len(str(caption or ''))}\n")
+            if caption:
+                f.write(f"{caption}\n\n")
+            else:
+                f.write("No caption available\n\n")
+            f.write("-" * 60 + "\n")
+            f.write("LANGUAGE DETECTION\n")
+            f.write("-" * 60 + "\n")
+            f.write(f"Detected Language: {detected_lang}\n")
+            f.write(f"Confidence: {lang_probability:.2%}\n")
+            f.write(f"Detection Time: {detection_time:.2f}s\n\n")
+            f.write("-" * 60 + "\n")
+            f.write("TRANSCRIPTION\n")
+            f.write("-" * 60 + "\n")
+            f.write(f"Model Used: {model_used}\n")
+            f.write(f"Task: {task}\n")
+            f.write(f"Audio Duration: {final_info.duration:.2f}s\n")
+            f.write(f"Transcription Time: {transcription_time:.2f}s\n")
+            if english_transcript:
+                f.write(f"Translation Time: {translation_time:.2f}s\n")
+            f.write(f"Total Processing Time: {processing_time:.2f}s\n\n")
+            f.write("-" * 60 + "\n")
+            f.write("OUTPUT FILES\n")
+            f.write("-" * 60 + "\n")
+            f.write(f"Audio: audio.wav\n")
+            f.write(f"Transcript ({detected_lang}): transcript.txt\n")
+            if english_transcript:
+                f.write(f"Translation (en): transcript-en.txt\n")
+            f.write("=" * 60 + "\n")
+        logger.info("Successfully created transcription-meta.txt")
+    except Exception as e:
+        logger.error(f"Failed to create transcription-meta.txt: {e}")
+        # Continue execution even if meta file creation fails
 
     logger.info(f"Transcription complete for {shortcode}")
     logger.info(f"  Detected: {detected_lang} ({lang_probability:.4f})")
