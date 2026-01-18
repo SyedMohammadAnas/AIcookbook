@@ -114,10 +114,6 @@ def transcribe():
             }), 404
 
         logger.info(f"Starting transcription for shortcode: {shortcode}")
-        logger.info(f"Video path: {video_path}")
-        logger.info(f"Caption received: {caption is not None and len(str(caption or '')) > 0}")
-        if caption:
-            logger.info(f"Caption length: {len(caption)}")
         result = transcribe_video(shortcode, video_path, caption)
 
         return jsonify(result)

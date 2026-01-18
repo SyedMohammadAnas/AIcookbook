@@ -1,5 +1,20 @@
+// @ts-ignore: Next.js and Node.js types are available at runtime
 import { NextRequest, NextResponse } from 'next/server';
+// @ts-ignore: Node.js fs module is available
 import { promises as fs } from 'fs';
+
+import { HTTPError } from "@/lib/errors";
+import { getEnhancedVideoInfo } from "@/features/instagram";
+import { INSTAGRAM_CONFIGS } from "@/features/instagram/constants";
+import { getPostIdFromUrl } from "@/features/instagram/utils";
+
+// Simple in-memory cache to prevent duplicate processing
+const processingCache = new Set<string>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+setInterval(() => {
+  processingCache.clear(); // Clean cache every 5 minutes
+}, CACHE_TTL);
 
 interface CompletePipelineRequest {
   url: string;
@@ -25,9 +40,11 @@ interface CompletePipelineResponse {
  * 3. Transcribe to English
  */
 export async function POST(request: NextRequest): Promise<NextResponse<CompletePipelineResponse>> {
+  let url: string = '';
+
   try {
     const body: CompletePipelineRequest = await request.json();
-    const { url } = body;
+    url = body.url;
 
     if (!url) {
       return NextResponse.json(
@@ -39,35 +56,46 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
       );
     }
 
-    console.log(`Starting complete pipeline for URL: ${url}`);
-    console.log('DEBUG: About to get metadata');
-
-    // Step 1: Get metadata and download video
-    console.log('Step 1/3: Getting metadata...');
-
-    // Get metadata from video endpoint (enhanced=true to get caption)
-    const metadataUrl = `http://localhost:3000/api/video?postUrl=${encodeURIComponent(url)}&enhanced=true`;
-    const metadataResponse = await fetch(metadataUrl);
-
-    if (!metadataResponse.ok) {
-      console.error('Metadata response status:', metadataResponse.status);
-      console.error('Metadata response statusText:', metadataResponse.statusText);
-      const errorText = await metadataResponse.text();
-      console.error('Metadata response body:', errorText);
-      throw new Error(`Failed to fetch video metadata: ${metadataResponse.status} ${metadataResponse.statusText}`);
+    // Check for duplicate processing
+    if (processingCache.has(url)) {
+      console.log(`[COMPLETE PIPELINE] Skipping duplicate request for: ${url}`);
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Request already being processed',
+        },
+        { status: 409 }
+      );
     }
 
-    const metadata = await metadataResponse.json();
+    processingCache.add(url);
 
-    if (!metadata.success || !metadata.data) {
-      throw new Error(metadata.error || 'Failed to get video metadata');
+    console.log(`[COMPLETE PIPELINE] Processing: ${url}`);
+
+    // Get metadata directly (enhanced=true to get caption)
+    if (!INSTAGRAM_CONFIGS.enableServerAPI) {
+      throw new Error('Instagram API not enabled');
     }
+
+    const postId = await getPostIdFromUrl(url);
+    if (!postId) {
+      throw new Error('Invalid Post URL');
+    }
+
+    console.log(`[COMPLETE PIPELINE] Fetched post ID: ${postId}`);
+
+    const metadata = {
+      success: true,
+      message: "success",
+      data: await getEnhancedVideoInfo(postId, url),
+      timestamp: new Date().toISOString()
+    };
 
     // Extract shortcode from URL
     const urlMatch = url.match(/\/(?:reel|p)\/([A-Za-z0-9_-]+)/);
     const shortcode = urlMatch ? urlMatch[1] : 'unknown';
 
-    const mediaUrl = metadata.data.videoUrl || metadata.data.medias?.[0]?.url;
+    const mediaUrl = metadata.data.medias?.[0]?.url;
 
     if (!mediaUrl) {
       throw new Error('No video URL found in metadata');
@@ -98,32 +126,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
     }
 
     const arrayBuffer = await videoResponse.arrayBuffer();
+    // @ts-ignore: Buffer is a Node.js global
     const buffer = Buffer.from(arrayBuffer);
 
     // Save video file
     const videoPath = `${reelDir}/video.mp4`;
     await fs.writeFile(videoPath, buffer);
 
-    console.log(`Video saved successfully: ${videoPath}`);
-    console.log(`Video downloaded: ${shortcode}`);
+    // Extract caption from metadata
+    const caption = metadata.data?.title || '';
 
-    // Step 3: Transcribe
-    console.log('Step 3/3: Transcribing...');
-
-    // Extract caption from metadata (try multiple sources)
-    let caption = metadata.data?.title || '';
-    if (!caption) {
-      caption = metadata.data?.edge_media_to_caption?.edges?.[0]?.node?.text || '';
-    }
-    console.log('Caption extraction debug:');
-    console.log('- metadata.data exists:', !!metadata.data);
-    console.log('- metadata.data.title:', metadata.data?.title?.substring(0, 100) + '...');
-    console.log('- Final caption length:', caption.length);
-
-    console.log('Attempting to call transcription service...');
-    console.log('Shortcode:', shortcode);
-    console.log('Final Caption length:', caption ? caption.length : 0);
-    console.log('Sending JSON:', JSON.stringify({ shortcode, caption: caption.substring(0, 50) + '...' }));
+    console.log(`[COMPLETE PIPELINE] Starting transcription...`);
 
     let transcribeResponse;
     const maxRetries = 3;
@@ -131,32 +144,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Transcription service call attempt ${attempt}/${maxRetries}`);
         transcribeResponse = await fetch('http://172.19.0.2:5000/transcribe', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ shortcode, caption }),
-          signal: AbortSignal.timeout(10000), // 10 second timeout per attempt
+          signal: AbortSignal.timeout(10000),
         });
-        console.log('Transcription service call successful');
-        break; // Success, exit retry loop
+        break;
       } catch (fetchError) {
-        const errorMessage =
-          fetchError instanceof Error
-            ? fetchError.message
-            : typeof fetchError === 'string'
-              ? fetchError
-              : 'Unknown error';
-
-        console.error(`Transcription service call attempt ${attempt} failed:`, errorMessage);
-
         if (attempt === maxRetries) {
-          throw new Error(`Transcription service unavailable after ${maxRetries} attempts: ${errorMessage}`);
+          throw new Error(`Transcription service failed: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
         }
-
-        console.log(`Waiting ${retryDelay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
     }
@@ -171,7 +171,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
       throw new Error(transcribeResult.error || 'Failed to transcribe video');
     }
 
-    console.log(`Pipeline complete: ${shortcode}`);
+    // Update transcription-meta.txt with transcription content and caption
+    try {
+      const metaPath = `${reelDir}/transcription-meta.txt`;
+      let metaContent = await fs.readFile(metaPath, 'utf-8');
+
+      // Replace OUTPUT FILES section with output data
+      const outputSection = `------------------------------------------------------------
+OUTPUT DATA
+------------------------------------------------------------
+1. TRANSCRIPTION:
+${transcribeResult.transcript}
+
+2. CAPTION:
+${caption || 'No caption available'}
+
+============================================================`;
+
+      metaContent = metaContent.replace(
+        /------------------------------------------------------------\s*OUTPUT FILES\s*------------------------------------------------------------[\s\S]*$/m,
+        outputSection
+      );
+
+      await fs.writeFile(metaPath, metaContent, 'utf-8');
+    } catch (updateError) {
+      console.error('Meta update failed:', updateError instanceof Error ? updateError.message : String(updateError));
+    }
+
+    console.log(`[COMPLETE PIPELINE] Completed: ${shortcode}`);
+
+    // Clean up cache
+    processingCache.delete(url);
 
     return NextResponse.json({
       success: true,
@@ -187,6 +217,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<CompleteP
 
   } catch (error) {
     console.error('Pipeline error:', error);
+
+    // Clean up cache on error
+    processingCache.delete(url);
 
     return NextResponse.json(
       {

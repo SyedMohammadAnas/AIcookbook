@@ -420,28 +420,15 @@ def transcribe_video(shortcode, video_path, caption=None):
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
 
-    # Create transcription-meta.txt for quick reference
+    # Create basic transcription-meta.txt (will be updated by API with content and caption)
     try:
         meta_txt_path = os.path.join(base_dir, 'transcription-meta.txt')
-        logger.info(f"Creating transcription-meta.txt at: {meta_txt_path}")
-        logger.info(f"Caption present: {caption is not None and len(str(caption or '')) > 0}")
         with open(meta_txt_path, 'w', encoding='utf-8') as f:
             f.write("=" * 60 + "\n")
             f.write("TRANSCRIPTION METADATA\n")
             f.write("=" * 60 + "\n\n")
             f.write(f"Shortcode: {shortcode}\n")
             f.write(f"Transcribed At: {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}\n\n")
-            f.write("-" * 60 + "\n")
-            f.write("REEL CAPTION\n")
-            f.write("-" * 60 + "\n")
-            logger.info("Writing REEL CAPTION section")
-            f.write(f"Caption value: '{caption}'\n")
-            f.write(f"Caption type: {type(caption)}\n")
-            f.write(f"Caption length: {len(str(caption or ''))}\n")
-            if caption:
-                f.write(f"{caption}\n\n")
-            else:
-                f.write("No caption available\n\n")
             f.write("-" * 60 + "\n")
             f.write("LANGUAGE DETECTION\n")
             f.write("-" * 60 + "\n")
@@ -466,10 +453,8 @@ def transcribe_video(shortcode, video_path, caption=None):
             if english_transcript:
                 f.write(f"Translation (en): transcript-en.txt\n")
             f.write("=" * 60 + "\n")
-        logger.info("Successfully created transcription-meta.txt")
     except Exception as e:
         logger.error(f"Failed to create transcription-meta.txt: {e}")
-        # Continue execution even if meta file creation fails
 
     logger.info(f"Transcription complete for {shortcode}")
     logger.info(f"  Detected: {detected_lang} ({lang_probability:.4f})")
